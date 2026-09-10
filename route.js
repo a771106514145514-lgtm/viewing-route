@@ -24,6 +24,11 @@ const caseLink = (row, text) => (row && row.survey_url
   : escapeHtml(text));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* 同一家店在後台會拆成「業一／業二」兩個名字，以店為單位就要把它們併起來 */
+const storeOf = (row) => (row.branch || "").replace(/\s*業[一二三四五六七八九十\d]+\s*$/, "").trim();
+
+const FILTER_KEYS = ["f-city", "f-district", "f-branch", "f-rooms"];
+
 let toastTimer = null;
 function toast(text) {
   const box = $("toast");
@@ -53,23 +58,89 @@ async function boot() {
   state.picked = JSON.parse(localStorage.getItem(PICKED_KEY) || "[]")
     .filter((id) => state.byCase[id]);
 
-  const districts = [...new Set(state.rows.map((r) => r.district).filter(Boolean))].sort();
-  $("f-district").innerHTML = `<option value="">全部區域</option>` +
-    districts.map((d) => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join("");
-
+  state.rows.forEach((row) => { row.store = storeOf(row); });
+  fillCities();
+  refreshDistricts();
+  fillBranches();
+  restoreFilters();
   renderPool();
   renderPicked();
+}
+
+/* ------------------------------------------------------------------ 篩選選單 */
+function counted(values, head) {
+  return `<option value="">${head}</option>` + values
+    .map(([value, n]) => `<option value="${escapeHtml(value)}">${escapeHtml(value)}（${n}）</option>`)
+    .join("");
+}
+
+function tally(rows, key) {
+  const counts = new Map();
+  rows.forEach((row) => {
+    const value = row[key];
+    if (value) counts.set(value, (counts.get(value) || 0) + 1);
+  });
+  return [...counts.entries()];
+}
+
+function fillCities() {
+  const values = tally(state.rows, "city").sort((a, b) => b[1] - a[1]);
+  $("f-city").innerHTML = counted(values, "全部縣市");
+}
+
+function fillBranches() {
+  // 以店為單位：件數多的排前面，找自己那家店比較快。
+  // 括號裡的數字跟著已經選的縣市走，不然「選了店卻只剩幾筆」會看不懂。
+  const city = $("f-city").value;
+  const rows = city ? state.rows.filter((r) => r.city === city) : state.rows;
+  const values = tally(rows, "store").sort((a, b) => b[1] - a[1]);
+  const keep = $("f-branch").value;
+  $("f-branch").innerHTML = counted(values, "全部分店");
+  $("f-branch").value = values.some(([v]) => v === keep) ? keep : "";
+}
+
+function refreshDistricts() {
+  const city = $("f-city").value;
+  const rows = city ? state.rows.filter((r) => r.city === city) : state.rows;
+  const values = tally(rows, "district").sort((a, b) => b[1] - a[1]);
+  const keep = $("f-district").value;
+  $("f-district").innerHTML = counted(values, "全部行政區");
+  $("f-district").value = values.some(([v]) => v === keep) ? keep : "";
+}
+
+function restoreFilters() {
+  // 縣市要先套用，行政區與分店的選項才是對的
+  const saved = (id) => localStorage.getItem("daikan." + id) || "";
+  const apply = (id) => {
+    const value = saved(id);
+    const select = $(id);
+    if (value && [...select.options].some((o) => o.value === value)) select.value = value;
+  };
+  apply("f-city");
+  refreshDistricts();
+  fillBranches();
+  apply("f-district");
+  apply("f-branch");
+  apply("f-rooms");
+}
+
+function rememberFilters() {
+  FILTER_KEYS.forEach((id) => localStorage.setItem("daikan." + id, $(id).value));
 }
 
 /* ------------------------------------------------------------------ 挑物件 */
 function filtered() {
   const q = $("f-q").value.trim().toLowerCase();
+  const city = $("f-city").value;
   const district = $("f-district").value;
+  const branch = $("f-branch").value;
   const rooms = $("f-rooms").value;
   const min = parseFloat($("f-min").value);
   const max = parseFloat($("f-max").value);
   return state.rows.filter((row) => {
+    if (city && row.city !== city) return false;
     if (district && row.district !== district) return false;
+    if (branch && row.store !== branch) return false;
     if (rooms) {
       const n = parseInt(row.rooms, 10) || 0;
       if (rooms === "4" ? n < 4 : n !== parseInt(rooms, 10)) return false;
@@ -98,6 +169,7 @@ function renderPool() {
         <div class="title">${on ? "✓ " : ""}${caseLink(row, row.title || row.case_id)}</div>
         <div class="meta">${escapeHtml(row.full_address || row.address || "沒有地址")}</div>
         <div class="meta"><span class="tag">${escapeHtml(row.case_id)}</span>${escapeHtml(bits)}</div>
+        ${row.store ? `<div class="meta">${escapeHtml(row.store)}</div>` : ""}
       </div>
       <div class="price">${escapeHtml(money(row))}</div>
     </div>`;
@@ -644,10 +716,22 @@ $("btn-here").addEventListener("click", () => {
 $("btn-plan").addEventListener("click", () => plan(false));
 $("btn-keep").addEventListener("click", () => plan(true));
 ["f-q", "f-min", "f-max"].forEach((id) => $(id).addEventListener("input", renderPool));
-["f-district", "f-rooms"].forEach((id) => $(id).addEventListener("change", renderPool));
+["f-district", "f-branch", "f-rooms"].forEach((id) => $(id).addEventListener("change", () => {
+  rememberFilters();
+  renderPool();
+}));
+$("f-city").addEventListener("change", () => {
+  refreshDistricts();
+  fillBranches();
+  rememberFilters();
+  renderPool();
+});
 $("btn-clear-filter").addEventListener("click", () => {
   ["f-q", "f-min", "f-max"].forEach((id) => { $(id).value = ""; });
-  ["f-district", "f-rooms"].forEach((id) => { $(id).value = ""; });
+  FILTER_KEYS.forEach((id) => { $(id).value = ""; });
+  refreshDistricts();
+  fillBranches();
+  rememberFilters();
   renderPool();
 });
 

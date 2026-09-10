@@ -110,11 +110,13 @@ label.field{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:4px
     <div class="body">
       <div class="filters">
         <div class="wide"><input type="search" id="f-q" placeholder="搜尋案名、地址、案號"></div>
-        <select id="f-district"><option value="">全部區域</option></select>
-        <select id="f-rooms">
+        <select id="f-city"><option value="">全部縣市</option></select>
+        <select id="f-district"><option value="">全部行政區</option></select>
+        <div class="wide"><select id="f-branch"><option value="">全部分店</option></select></div>
+        <div class="wide"><select id="f-rooms">
           <option value="">不限房數</option><option value="1">1 房</option>
           <option value="2">2 房</option><option value="3">3 房</option><option value="4">4 房以上</option>
-        </select>
+        </select></div>
         <input type="number" id="f-min" placeholder="最低總價（萬）">
         <input type="number" id="f-max" placeholder="最高總價（萬）">
       </div>
@@ -155,6 +157,6 @@ label.field{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:4px
 <div id="toast"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="route.js?v=202609101357"></script>
+<script src="route.js?v=202609101459"></script>
 </body>
 </html>
