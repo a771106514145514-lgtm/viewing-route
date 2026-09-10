@@ -12,7 +12,7 @@ const PICKED_KEY = "daikan.picked";
 const GEO_KEY = "daikan.geo";
 
 const $ = (id) => document.getElementById(id);
-const state = { rows: [], byCase: {}, picked: [], plan: null, map: null, layer: null };
+const state = { rows: [], byCase: {}, picked: [], plan: null, map: null, layer: null, branch: "" };
 
 const escapeHtml = (t) => String(t ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -27,7 +27,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /* 同一家店在後台會拆成「業一／業二」兩個名字，以店為單位就要把它們併起來 */
 const storeOf = (row) => (row.branch || "").replace(/\s*業[一二三四五六七八九十\d]+\s*$/, "").trim();
 
-const FILTER_KEYS = ["f-city", "f-district", "f-branch", "f-rooms"];
+/* 分店按鈕上只放「哪一家」，品牌跟「加盟店」三個字省掉才排得下 */
+const shortStore = (name) => (name || "")
+  .replace(/^(永慶不動產|永慶房屋|有巢氏房屋|有巢氏|永義房屋|台慶不動產|台慶房屋)/, "")
+  .replace(/加盟店$/, "").trim() || name;
+
+const FILTER_KEYS = ["f-city", "f-district", "f-rooms"];
 
 let toastTimer = null;
 function toast(text) {
@@ -89,15 +94,44 @@ function fillCities() {
 }
 
 function fillBranches() {
-  // 以店為單位：件數多的排前面，找自己那家店比較快。
-  // 括號裡的數字跟著已經選的縣市走，不然「選了店卻只剩幾筆」會看不懂。
+  // 以店為單位，一家一顆按鈕，點下去就只剩那家店的物件。
+  // 件數多的排前面，件數跟著已經選的縣市走。
   const city = $("f-city").value;
   const rows = city ? state.rows.filter((r) => r.city === city) : state.rows;
   const values = tally(rows, "store").sort((a, b) => b[1] - a[1]);
-  const keep = $("f-branch").value;
-  $("f-branch").innerHTML = counted(values, "全部分店");
-  $("f-branch").value = values.some(([v]) => v === keep) ? keep : "";
+  if (state.branch && !values.some(([v]) => v === state.branch)) state.branch = "";
+
+  $("branch-chips").innerHTML =
+    `<button class="chip ${state.branch ? "" : "on"}" data-store="">全部分店（${rows.length}）</button>` +
+    values.map(([name, n]) => `<button class="chip ${name === state.branch ? "on" : ""}"
+        data-store="${escapeHtml(name)}" title="${escapeHtml(name)}"
+        >${escapeHtml(shortStore(name))}（${n}）</button>`).join("");
+  scrollChipIntoView();
 }
+
+function scrollChipIntoView() {
+  const on = $("branch-chips").querySelector(".chip.on");
+  if (on && state.branch) on.scrollIntoView({ inline: "center", block: "nearest" });
+}
+
+function pickStore(name) {
+  state.branch = state.branch === name ? "" : name;   // 再點一次就取消
+  localStorage.setItem("daikan.f-branch", state.branch);
+  fillBranches();
+  renderPool();
+  $("pool-list").scrollTop = 0;
+}
+
+$("branch-chips").addEventListener("click", (event) => {
+  const chip = event.target.closest(".chip");
+  if (!chip) return;
+  const name = chip.dataset.store;
+  state.branch = name;                                // 「全部分店」是空字串
+  localStorage.setItem("daikan.f-branch", name);
+  fillBranches();
+  renderPool();
+  $("pool-list").scrollTop = 0;
+});
 
 function refreshDistricts() {
   const city = $("f-city").value;
@@ -117,10 +151,10 @@ function restoreFilters() {
     if (value && [...select.options].some((o) => o.value === value)) select.value = value;
   };
   apply("f-city");
+  state.branch = saved("f-branch");
   refreshDistricts();
   fillBranches();
   apply("f-district");
-  apply("f-branch");
   apply("f-rooms");
 }
 
@@ -133,14 +167,13 @@ function filtered() {
   const q = $("f-q").value.trim().toLowerCase();
   const city = $("f-city").value;
   const district = $("f-district").value;
-  const branch = $("f-branch").value;
   const rooms = $("f-rooms").value;
   const min = parseFloat($("f-min").value);
   const max = parseFloat($("f-max").value);
   return state.rows.filter((row) => {
     if (city && row.city !== city) return false;
     if (district && row.district !== district) return false;
-    if (branch && row.store !== branch) return false;
+    if (state.branch && row.store !== state.branch) return false;
     if (rooms) {
       const n = parseInt(row.rooms, 10) || 0;
       if (rooms === "4" ? n < 4 : n !== parseInt(rooms, 10)) return false;
@@ -169,7 +202,8 @@ function renderPool() {
         <div class="title">${on ? "✓ " : ""}${caseLink(row, row.title || row.case_id)}</div>
         <div class="meta">${escapeHtml(row.full_address || row.address || "沒有地址")}</div>
         <div class="meta"><span class="tag">${escapeHtml(row.case_id)}</span>${escapeHtml(bits)}</div>
-        ${row.store ? `<div class="meta">${escapeHtml(row.store)}</div>` : ""}
+        ${row.store ? `<div class="meta"><span class="tag store" data-store="${escapeHtml(row.store)}"
+            >🏢 ${escapeHtml(row.store)}</span></div>` : ""}
       </div>
       <div class="price">${escapeHtml(money(row))}</div>
     </div>`;
@@ -675,6 +709,8 @@ async function plan(keepOrder) {
 
 $("pool-list").addEventListener("click", (event) => {
   if (event.target.closest("a")) return;      // 點案名是要開物調
+  const store = event.target.closest("[data-store]");
+  if (store) return pickStore(store.dataset.store);   // 點店名＝只看那家店
   const item = event.target.closest(".item");
   if (item) togglePick(item.dataset.case);
 });
@@ -716,7 +752,7 @@ $("btn-here").addEventListener("click", () => {
 $("btn-plan").addEventListener("click", () => plan(false));
 $("btn-keep").addEventListener("click", () => plan(true));
 ["f-q", "f-min", "f-max"].forEach((id) => $(id).addEventListener("input", renderPool));
-["f-district", "f-branch", "f-rooms"].forEach((id) => $(id).addEventListener("change", () => {
+["f-district", "f-rooms"].forEach((id) => $(id).addEventListener("change", () => {
   rememberFilters();
   renderPool();
 }));
@@ -729,6 +765,8 @@ $("f-city").addEventListener("change", () => {
 $("btn-clear-filter").addEventListener("click", () => {
   ["f-q", "f-min", "f-max"].forEach((id) => { $(id).value = ""; });
   FILTER_KEYS.forEach((id) => { $(id).value = ""; });
+  state.branch = "";
+  localStorage.setItem("daikan.f-branch", "");
   refreshDistricts();
   fillBranches();
   rememberFilters();
