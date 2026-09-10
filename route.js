@@ -17,6 +17,11 @@ const state = { rows: [], byCase: {}, picked: [], plan: null, map: null, layer: 
 const escapeHtml = (t) => String(t ?? "").replace(/[&<>"']/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const money = (row) => row.price_text || (row.price ? row.price + "萬" : "");
+
+/* 案名點下去開物調。那個網址要登入吉富後台才打得開。 */
+const caseLink = (row, text) => (row && row.survey_url
+  ? `<a class="case" href="${escapeHtml(row.survey_url)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`
+  : escapeHtml(text));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let toastTimer = null;
@@ -90,7 +95,7 @@ function renderPool() {
       .filter(Boolean).join("・");
     return `<div class="item ${on ? "on" : ""}" data-case="${escapeHtml(row.case_id)}">
       <div class="grow">
-        <div class="title">${on ? "✓ " : ""}${escapeHtml(row.title || row.case_id)}</div>
+        <div class="title">${on ? "✓ " : ""}${caseLink(row, row.title || row.case_id)}</div>
         <div class="meta">${escapeHtml(row.full_address || row.address || "沒有地址")}</div>
         <div class="meta"><span class="tag">${escapeHtml(row.case_id)}</span>${escapeHtml(bits)}</div>
       </div>
@@ -126,7 +131,7 @@ function renderPicked() {
     return `<li>
       <span class="seq">${index + 1}</span>
       <span class="grow">
-        <span style="font-weight:600">${escapeHtml(row.title || caseId)}</span>
+        <span style="font-weight:600">${caseLink(row, row.title || caseId)}</span>
         <span class="addr">${escapeHtml(address)}</span>
       </span>
       <span style="display:flex;gap:4px">
@@ -488,7 +493,7 @@ function renderResult(result) {
         <span class="badge">${escapeHtml(badge)}</span>
         <span class="grow" style="flex:1;min-width:0">
           <div><span class="when">${escapeHtml(stop.arrive || "")}</span>
-            <b>${escapeHtml(stop.title || stop.name)}</b>
+            <b>${caseLink(stop, stop.title || stop.name)}</b>
             ${stop.leave && !anchor ? `<span class="note">（看到 ${escapeHtml(stop.leave)}）</span>` : ""}</div>
           <div class="note">${escapeHtml(address)}</div>
           ${detail ? `<div class="note">${escapeHtml(detail)}</div>` : ""}
@@ -597,6 +602,7 @@ async function plan(keepOrder) {
 }
 
 $("pool-list").addEventListener("click", (event) => {
+  if (event.target.closest("a")) return;      // 點案名是要開物調
   const item = event.target.closest(".item");
   if (item) togglePick(item.dataset.case);
 });
