@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16764d">
+<title>帶看清單</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1c1f23;--ink-soft:#5d646d;--line:#e2e5ea;
+  --accent:#16764d;--accent-soft:#e4f2eb;--shadow:0 1px 2px rgba(15,23,32,.06),0 8px 24px rgba(15,23,32,.06)}
+@media (prefers-color-scheme:dark){:root{--bg:#14171a;--card:#1d2126;--ink:#e9edf1;--ink-soft:#99a3ad;
+  --line:#2c333a;--accent:#4fbc8a;--accent-soft:#1d3a2e;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35)}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 -apple-system,"PingFang TC","Helvetica Neue",sans-serif;
+  padding:0 0 calc(24px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;padding:14px 16px;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px)}
+header h1{margin:0;font-size:17px}
+header .sub{color:var(--ink-soft);font-size:13px}
+.wrap{padding:14px 16px;display:grid;gap:12px;max-width:680px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  box-shadow:var(--shadow);padding:14px;display:flex;gap:12px}
+.seq{width:28px;height:28px;flex:none;border-radius:50%;background:var(--accent);color:#fff;
+  font-weight:700;font-size:14px;display:grid;place-items:center}
+.grow{flex:1;min-width:0}
+.name{font-weight:700;font-size:16px}
+.meta{color:var(--ink-soft);font-size:14px}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+a.btn{display:inline-block;text-decoration:none;border:1px solid var(--line);background:var(--bg);
+  color:var(--ink);border-radius:12px;padding:9px 14px;font-size:15px;font-weight:600}
+a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.note{color:var(--ink-soft);font-size:13px}
+.all{display:grid;gap:8px;padding:0 16px;max-width:680px;margin:0 auto}
+footer{padding:16px;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>帶看清單</h1>
+  <div class="sub" id="sub">載入中…</div>
+</header>
+<div class="wrap" id="list"></div>
+<div class="all" id="all"></div>
+<footer class="note">物調要先登入吉富後台才打得開。</footer>
+
+<script>
+/* 這一頁是「傳給業務」用的：LINE 收到連結點進來，每一間都有物調與導航按鈕。
+   要看哪幾間寫在網址的 # 後面（#c=案號,案號&t=出發時間），資料讀同一份 data.json。 */
+const $ = (id) => document.getElementById(id);
+const escapeHtml = (t) => String(t ?? "").replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+function params() {
+  const raw = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+  const out = { c: [], t: "", s: "" };
+  raw.split("&").forEach((pair) => {
+    const [key, value = ""] = pair.split("=");
+    if (key === "c") out.c = value.split(",").map((x) => x.trim()).filter(Boolean);
+    else if (key === "t") out.t = value;
+    else if (key === "s") out.s = value;
+    else if (!out.c.length && pair) out.c = pair.split(",").map((x) => x.trim()).filter(Boolean);
+  });
+  return out;
+}
+
+const addressOf = (row) => (row.full_address || row.address || "").trim();
+
+function navUrl(address) {
+  return "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination="
+    + encodeURIComponent(address);
+}
+
+function routeUrl(stops) {
+  const points = stops.map(addressOf).filter(Boolean);
+  if (points.length < 2) return "";
+  const query = new URLSearchParams({
+    api: "1", travelmode: "driving", origin: points[0], destination: points[points.length - 1],
+  });
+  if (points.length > 2) query.set("waypoints", points.slice(1, -1).slice(0, 8).join("|"));
+  return "https://www.google.com/maps/dir/?" + query.toString();
+}
+
+async function boot() {
+  const want = params();
+  if (!want.c.length) {
+    $("sub").textContent = "這個連結沒有帶物件。";
+    return;
+  }
+  let data = { stops: [] };
+  try {
+    data = await (await fetch("data.json?t=" + Date.now(), { cache: "no-store" })).json();
+  } catch (err) {
+    $("sub").textContent = "讀不到物件資料。";
+    return;
+  }
+  const byCase = {};
+  (data.stops || []).forEach((row) => { byCase[row.case_id] = row; });
+  const stops = want.c.map((id) => byCase[id] || { case_id: id });
+
+  $("sub").textContent = `${stops.length} 間`
+    + (want.t ? `・${want.t} 出發` : "") + (want.s ? `・從 ${want.s} 出發` : "");
+
+  $("list").innerHTML = stops.map((row, index) => {
+    const address = addressOf(row);
+    const bits = [row.price_text, row.rooms, row.ping ? `${row.ping}坪` : "", row.property_type]
+      .filter(Boolean).join("・");
+    return `<div class="card">
+      <span class="seq">${index + 1}</span>
+      <span class="grow">
+        <div class="name">${escapeHtml(row.title || row.case_id)}</div>
+        <div class="meta">${escapeHtml(address || "（這筆不在公開清單裡）")}</div>
+        ${bits ? `<div class="meta">${escapeHtml(bits)}</div>` : ""}
+        <div class="meta">${escapeHtml(row.case_id)}${row.branch ? "・" + escapeHtml(row.branch) : ""}</div>
+        <div class="btns">
+          ${row.survey_url ? `<a class="btn primary" href="${escapeHtml(row.survey_url)}"
+             target="_blank" rel="noopener">📋 物調</a>` : ""}
+          ${address ? `<a class="btn" href="${escapeHtml(navUrl(address))}"
+             target="_blank" rel="noopener">🗺️ 導航</a>` : ""}
+        </div>
+      </span>
+    </div>`;
+  }).join("");
+
+  const whole = routeUrl(stops);
+  $("all").innerHTML = whole
+    ? `<a class="btn primary" style="text-align:center" href="${escapeHtml(whole)}"
+         target="_blank" rel="noopener">🚗 用 Google 地圖跑整條路線</a>` : "";
+}
+
+boot();
+</script>
+</body>
+</html>

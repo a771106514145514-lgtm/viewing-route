@@ -555,6 +555,32 @@ async function buildPlan(keepOrder) {
   };
 }
 
+/* LINE 只能傳純文字，按不到「按鈕」，所以給業務的版本是傳一個連結：
+   點進去是 trip.html，那一頁每一間都有「物調」「導航」按鈕。
+   物調網址也一起寫在文字裡，當作連結打不開時的備援。 */
+const openLine = (text) =>
+  window.open("https://line.me/R/share?text=" + encodeURIComponent(text), "_blank");
+
+function tripUrl(result, depart) {
+  const ids = result.stops.filter((s) => s.kind === "case" && s.case_id).map((s) => s.case_id);
+  if (!ids.length) return "";
+  const base = location.href.split("#")[0].split("?")[0].replace(/[^/]*$/, "") + "trip.html";
+  return `${base}#c=${ids.join(",")}${depart ? "&t=" + depart : ""}`;
+}
+
+function agentText(result, depart) {
+  const cases = result.stops.filter((s) => s.kind === "case");
+  const lines = [`帶看路線（給業務）${cases.length} 間${depart ? "・" + depart + " 出發" : ""}`];
+  cases.forEach((stop, index) => {
+    lines.push(`${index + 1}. ${stop.title || stop.name}（${stop.case_id}）`);
+    lines.push(`   ${stop.full_address || stop.address || ""}`);
+    if (stop.survey_url) lines.push(`   物調 ${stop.survey_url}`);
+  });
+  const url = tripUrl(result, depart);
+  if (url) lines.push(`整份清單（物調＋導航按鈕）：${url}`);
+  return lines.join("\n");
+}
+
 function shareText(ordered, depart) {
   const lines = [depart ? `帶看路線（${depart} 出發）` : "帶看路線"];
   let n = 0;
@@ -613,7 +639,8 @@ function renderResult(result) {
     <div class="actions">
       ${links}
       <button id="btn-copy">📋 複製清單</button>
-      <button id="btn-line">💬 用 LINE 傳</button>
+      <button id="btn-line">💬 傳給客戶</button>
+      <button id="btn-line-agent">💬 傳給業務</button>
     </div>`;
 
   $("result").querySelectorAll("[data-url]").forEach((button) => {
@@ -631,8 +658,10 @@ function renderResult(result) {
     } catch (err) { toast("這個瀏覽器不給複製，長按上面的文字自己選"); }
   });
   $("btn-line").addEventListener("click", () => {
-    const text = result.text + (result.links[0] ? `\n${result.links[0].url}` : "");
-    window.open("https://line.me/R/share?text=" + encodeURIComponent(text), "_blank");
+    openLine(result.text + (result.links[0] ? `\n${result.links[0].url}` : ""));
+  });
+  $("btn-line-agent").addEventListener("click", () => {
+    openLine(agentText(result, $("s-depart").value));
   });
 
   drawMap(result);
