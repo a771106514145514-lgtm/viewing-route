@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16764d">
+<title>帶看路線</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{
+  --bg:#f4f5f7; --card:#fff; --ink:#1c1f23; --ink-soft:#5d646d; --line:#e2e5ea;
+  --accent:#16764d; --accent-soft:#e4f2eb; --warn:#b4571b; --warn-soft:#fdf0e3;
+  --shadow:0 1px 2px rgba(15,23,32,.06),0 8px 24px rgba(15,23,32,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#14171a;--card:#1d2126;--ink:#e9edf1;--ink-soft:#99a3ad;--line:#2c333a;
+    --accent:#4fbc8a;--accent-soft:#1d3a2e;--warn:#e2a86a;--warn-soft:#38291a;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35);}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.6 -apple-system,"PingFang TC","Helvetica Neue",sans-serif;
+  padding-bottom:calc(84px + env(safe-area-inset-bottom));}
+h1{font-size:17px;margin:0}
+button,input,select{font:inherit;color:inherit}
+button{border:1px solid var(--line);background:var(--card);color:var(--ink);
+  border-radius:12px;padding:10px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.ghost{background:transparent}
+button.tiny{padding:4px 10px;border-radius:9px;font-size:14px}
+button:disabled{opacity:.5}
+input,select{background:var(--bg);border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px;width:100%}
+header{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;
+  padding:12px 14px;background:color-mix(in srgb,var(--card) 92%,transparent);
+  backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+header .sub{color:var(--ink-soft);font-size:12px}
+.wrap{padding:12px 14px;display:grid;gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;
+  box-shadow:var(--shadow);overflow:hidden}
+.card>.head{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.card>.head h2{font-size:15px;margin:0}
+.card>.head .count{color:var(--ink-soft);font-size:13px}
+.card>.body{padding:12px 14px}
+.spacer{flex:1}
+.filters{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+.filters .wide{grid-column:1/-1}
+.list{max-height:56vh;overflow:auto;margin:8px -14px -12px}
+.item{display:flex;gap:10px;padding:11px 14px;border-top:1px solid var(--line)}
+.item:active{background:var(--accent-soft)}
+.item.on{background:var(--accent-soft)}
+.item .grow{flex:1;min-width:0}
+.item .title{font-weight:600;font-size:15px}
+.item .meta{color:var(--ink-soft);font-size:13px}
+.item .price{font-weight:700;white-space:nowrap}
+.tag{display:inline-block;font-size:12px;padding:1px 7px;border-radius:999px;
+  background:var(--bg);border:1px solid var(--line);color:var(--ink-soft);margin-right:4px}
+.picked{list-style:none;margin:0;padding:0}
+.picked li{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line)}
+.picked .seq,.stop .badge{width:26px;height:26px;flex:none;border-radius:50%;background:var(--accent);
+  color:#fff;font-size:13px;font-weight:700;display:grid;place-items:center}
+.picked .grow{flex:1;min-width:0}
+.picked .addr,.note{color:var(--ink-soft);font-size:13px}
+.setup{display:grid;gap:10px;grid-template-columns:1fr 1fr;margin-bottom:10px}
+.setup .wide{grid-column:1/-1}
+label.field{display:block;font-size:13px;color:var(--ink-soft);margin-bottom:4px}
+.check{display:flex;align-items:center;gap:8px;font-size:14px}
+.check input{width:auto}
+.stop{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line)}
+.stop.anchor .badge{background:var(--ink-soft)}
+.stop .when{font-variant-numeric:tabular-nums;font-weight:700}
+.leg{color:var(--ink-soft);font-size:13px;padding:4px 0 4px 34px}
+.totals{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0;padding:10px 12px;
+  border-radius:12px;background:var(--accent-soft)}
+.totals div span{display:block;font-size:12px;color:var(--ink-soft)}
+.totals div b{font-size:17px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.warn{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:8px 10px;
+  font-size:13px;margin-top:8px}
+.empty{color:var(--ink-soft);text-align:center;padding:20px 8px}
+#map{height:300px;border-radius:12px;margin-top:12px;border:1px solid var(--line)}
+#bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;gap:10px;align-items:center;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  background:color-mix(in srgb,var(--card) 94%,transparent);backdrop-filter:blur(10px);
+  border-top:1px solid var(--line)}
+#bar .n{font-weight:700}
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%) translateY(16px);
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;opacity:0;
+  pointer-events:none;transition:.18s;z-index:60;max-width:86vw;font-size:14px}
+#toast.on{opacity:1;transform:translateX(-50%)}
+@media (min-width:900px){ .wrap{grid-template-columns:1fr 1fr;align-items:start;max-width:1180px;margin:0 auto} }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>帶看路線</h1>
+  <span class="sub" id="info">載入中…</span>
+</header>
+
+<div class="wrap">
+  <section class="card" id="pool-card">
+    <div class="head"><h2>物件</h2><span class="count" id="pool-count"></span>
+      <span class="spacer"></span>
+      <button class="tiny ghost" id="btn-clear-filter">清掉條件</button>
+    </div>
+    <div class="body">
+      <div class="filters">
+        <div class="wide"><input type="search" id="f-q" placeholder="搜尋案名、地址、案號"></div>
+        <select id="f-district"><option value="">全部區域</option></select>
+        <select id="f-rooms">
+          <option value="">不限房數</option><option value="1">1 房</option>
+          <option value="2">2 房</option><option value="3">3 房</option><option value="4">4 房以上</option>
+        </select>
+        <input type="number" id="f-min" placeholder="最低總價（萬）">
+        <input type="number" id="f-max" placeholder="最高總價（萬）">
+      </div>
+      <div class="list" id="pool-list"></div>
+    </div>
+  </section>
+
+  <section class="card" id="trip-card">
+    <div class="head"><h2>今天要看的</h2><span class="count" id="trip-count"></span>
+      <span class="spacer"></span>
+      <button class="tiny ghost" id="btn-empty">清空</button>
+    </div>
+    <div class="body">
+      <div class="setup">
+        <div class="wide">
+          <label class="field" for="s-start">起點</label>
+          <input type="text" id="s-start" placeholder="店址或跟客戶約的地方，留空＝從第一間開始">
+        </div>
+        <div class="wide"><button id="btn-here" class="ghost">📍 用我現在的位置當起點</button></div>
+        <div><label class="field" for="s-depart">幾點出發</label><input type="time" id="s-depart" value="14:00"></div>
+        <div><label class="field" for="s-dwell">每間看多久（分）</label><input type="number" id="s-dwell" value="20" min="0" step="5"></div>
+        <label class="check wide"><input type="checkbox" id="s-back"> 看完繞回起點</label>
+      </div>
+      <ul class="picked" id="picked"></ul>
+      <div id="result"></div>
+      <div id="map" hidden></div>
+    </div>
+  </section>
+</div>
+
+<div id="bar">
+  <span class="n" id="bar-count">還沒選</span>
+  <span class="spacer"></span>
+  <button class="ghost" id="btn-keep">照我排的</button>
+  <button class="primary" id="btn-plan">🚗 幫我排順路</button>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="route.js"></script>
+</body>
+</html>
