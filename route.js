@@ -93,47 +93,8 @@ function fillCities() {
   $("f-city").innerHTML = counted(values, "全部縣市");
 }
 
-function fillBranches() {
-  // 以店為單位，一家一顆按鈕，點下去就只剩那家店的物件。
-  // 件數多的排前面，件數跟著已經選的縣市走。
-  const city = $("f-city").value;
-  const rows = city ? state.rows.filter((r) => r.city === city) : state.rows;
-  const values = tally(rows, "store").sort((a, b) => b[1] - a[1]);
-  if (state.branch && !values.some(([v]) => v === state.branch)) state.branch = "";
-
-  $("branch-chips").innerHTML =
-    `<button class="chip ${state.branch ? "" : "on"}" data-store="">全部分店（${rows.length}）</button>` +
-    values.map(([name, n]) => `<button class="chip ${name === state.branch ? "on" : ""}"
-        data-store="${escapeHtml(name)}" title="${escapeHtml(name)}"
-        >${escapeHtml(shortStore(name))}（${n}）</button>`).join("");
-  scrollChipIntoView();
-}
-
-function scrollChipIntoView() {
-  const on = $("branch-chips").querySelector(".chip.on");
-  if (on && state.branch) on.scrollIntoView({ inline: "center", block: "nearest" });
-}
-
-function pickStore(name) {
-  state.branch = state.branch === name ? "" : name;   // 再點一次就取消
-  localStorage.setItem("daikan.f-branch", state.branch);
-  fillBranches();
-  renderPool();
-  $("pool-list").scrollTop = 0;
-}
-
-$("branch-chips").addEventListener("click", (event) => {
-  const chip = event.target.closest(".chip");
-  if (!chip) return;
-  const name = chip.dataset.store;
-  state.branch = name;                                // 「全部分店」是空字串
-  localStorage.setItem("daikan.f-branch", name);
-  fillBranches();
-  renderPool();
-  $("pool-list").scrollTop = 0;
-});
-
 function refreshDistricts() {
+  // 行政區跟著已選的縣市走
   const city = $("f-city").value;
   const rows = city ? state.rows.filter((r) => r.city === city) : state.rows;
   const values = tally(rows, "district").sort((a, b) => b[1] - a[1]);
@@ -141,6 +102,33 @@ function refreshDistricts() {
   $("f-district").innerHTML = counted(values, "全部行政區");
   $("f-district").value = values.some(([v]) => v === keep) ? keep : "";
 }
+
+function fillBranches() {
+  // 以店為單位的下拉選單：件數多的排前面，件數跟著已選的縣市走，
+  // 不然「選了店卻只剩幾筆」會看不懂。
+  const city = $("f-city").value;
+  const rows = city ? state.rows.filter((r) => r.city === city) : state.rows;
+  const values = tally(rows, "store").sort((a, b) => b[1] - a[1]);
+  if (state.branch && !values.some(([v]) => v === state.branch)) state.branch = "";
+  $("f-branch").innerHTML = counted(values, `全部分店（${rows.length}）`);
+  $("f-branch").value = state.branch;
+}
+
+function pickStore(name) {
+  // 清單上點店名＝只看那家店，點同一家第二次就取消
+  state.branch = state.branch === name ? "" : name;
+  localStorage.setItem("daikan.f-branch", state.branch);
+  $("f-branch").value = state.branch;
+  renderPool();
+  $("pool-list").scrollTop = 0;
+}
+
+$("f-branch").addEventListener("change", () => {
+  state.branch = $("f-branch").value;
+  localStorage.setItem("daikan.f-branch", state.branch);
+  renderPool();
+  $("pool-list").scrollTop = 0;
+});
 
 function restoreFilters() {
   // 縣市要先套用，行政區與分店的選項才是對的
@@ -153,7 +141,7 @@ function restoreFilters() {
   apply("f-city");
   state.branch = saved("f-branch");
   refreshDistricts();
-  fillBranches();
+  fillBranches();          // 會把 state.branch 套回下拉選單
   apply("f-district");
   apply("f-rooms");
 }
