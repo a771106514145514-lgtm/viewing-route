@@ -189,7 +189,7 @@ function renderPool() {
       <div class="grow">
         <div class="title">${on ? "✓ " : ""}${caseLink(row, row.title || row.case_id)}</div>
         <div class="meta">${escapeHtml(row.full_address || row.address || "沒有地址")}</div>
-        <div class="meta"><span class="tag">${escapeHtml(row.case_id)}</span>${escapeHtml(bits)}</div>
+        <div class="meta">${row.source === "591" ? `<span class="tag">591</span>` : ""}<span class="tag">${escapeHtml(row.case_id)}</span>${escapeHtml(bits)}</div>
         ${row.store ? `<div class="meta"><span class="tag store" data-store="${escapeHtml(row.store)}"
             >🏢 ${escapeHtml(row.store)}</span></div>` : ""}
       </div>
@@ -574,7 +574,9 @@ function agentText(result, depart) {
   cases.forEach((stop, index) => {
     lines.push(`${index + 1}. ${stop.title || stop.name}（${stop.case_id}）`);
     lines.push(`   ${stop.full_address || stop.address || ""}`);
-    if (stop.survey_url) lines.push(`   物調 ${stop.survey_url}`);
+    if (stop.survey_url) {
+      lines.push(`   ${stop.source === "591" ? "591" : "物調"} ${stop.survey_url}`);
+    }
   });
   const url = tripUrl(result, depart);
   if (url) lines.push(`整份清單（物調＋導航按鈕）：${url}`);

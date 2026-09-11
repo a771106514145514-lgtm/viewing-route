@@ -114,7 +114,7 @@ async function boot() {
         <div class="meta">${escapeHtml(row.case_id)}${row.branch ? "・" + escapeHtml(row.branch) : ""}</div>
         <div class="btns">
           ${row.survey_url ? `<a class="btn primary" href="${escapeHtml(row.survey_url)}"
-             target="_blank" rel="noopener">📋 物調</a>` : ""}
+             target="_blank" rel="noopener">${row.source === "591" ? "🔗 591 頁面" : "📋 物調"}</a>` : ""}
           ${address ? `<a class="btn" href="${escapeHtml(navUrl(address))}"
              target="_blank" rel="noopener">🗺️ 導航</a>` : ""}
         </div>
